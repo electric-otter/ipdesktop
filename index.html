@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Remote Desktop Peer Access</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background:#f9f9f9; }
+        .container { max-width: 500px; margin: auto; background:white; border-radius:10px; box-shadow:0 2px 8px #ccc; padding:30px;}
+        h2 { text-align:center; }
+        .hidden { display: none; }
+        #desktop-video { width:100%; border:1px solid #888; border-radius:8px; margin-top:15px;}
+        .note { font-size:0.95em; color:#856404; background:#fff3cd; padding:8px 12px; border-radius:6px; margin-bottom:18px; border:1px solid #ffeeba;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Connect to Remote Desktop</h2>
+        <div class="note">
+            <strong>Note:</strong> This is intended for <b>public IP addresses</b> and PeerJS public Peer IDs.<br>
+            <b>Private IPs</b> are for your use only and will not work for others over the internet.
+        </div>
+        <form id="ipForm">
+            <label for="ipInput">Enter Remote Peer ID:</label>
+            <input type="text" id="ipInput" required placeholder="PeerJS public ID" style="width:100%;padding:8px;margin-top:4px;">
+            <button type="submit" style="margin-top:10px;width:100%;">Connect</button>
+        </form>
+        
+        <div id="desktopOptions" class="hidden">
+            <h3>Request Permissions</h3>
+            <p>Select what you want to do on the desktop:</p>
+            <label><input type="checkbox" name="action" value="virus_tests"> Virus Tests</label><br>
+            <label><input type="checkbox" name="action" value="gaming"> Gaming</label><br>
+            <label><input type="checkbox" name="action" value="other"> Other</label><br>
+            <input style="width:100%;padding:6px;margin-top:10px;" id="otherAction" placeholder="Describe other (if selected)">
+            <button id="requestPerms" style="margin-top:10px;width:100%;">Request Permission</button>
+        </div>
+
+        <div id="waiting" class="hidden">
+            <p>Waiting for the peer to grant desktop access...</p>
+        </div>
+
+        <div id="videoSection" class="hidden">
+            <h3>Remote Desktop Stream</h3>
+            <video id="desktop-video" autoplay playsinline controls></video>
+        </div>
+    </div>
+    <script>
+        let peer, conn, call;
+        let remotePeerId = '';
+        let selectedActions = [];
+
+        document.getElementById('ipForm').onsubmit = function(e) {
+            e.preventDefault();
+            remotePeerId = document.getElementById('ipInput').value.trim();
+            if(!remotePeerId) return;
+
+            // Hide form, show options
+            document.getElementById('ipForm').classList.add('hidden');
+            document.getElementById('desktopOptions').classList.remove('hidden');
+
+            // Use PeerJS public server (default, no config needed)
+            peer = new Peer();
+
+            peer.on('open', function(id) {
+                // Our own PeerJS ID (for debug: can show to user if needed)
+            });
+
+            // Listen for permission response
+            peer.on('connection', function(incomingConn) {
+                incomingConn.on('data', function(data) {
+                    if (data.type === 'permission_response') {
+                        if(data.granted) {
+                            document.getElementById('waiting').classList.add('hidden');
+                            document.getElementById('videoSection').classList.remove('hidden');
+                            // Ask for remote desktop stream
+                            call = peer.call(remotePeerId, null); // no local stream
+                            call.on('stream', function(remoteStream) {
+                                document.getElementById('desktop-video').srcObject = remoteStream;
+                            });
+                            call.on('close', function() {
+                                alert('Stream closed.');
+                            });
+                        } else {
+                            alert('Permission denied by remote peer.');
+                            window.location.reload();
+                        }
+                    }
+                });
+            });
+        };
+
+        document.getElementById('requestPerms').onclick = function() {
+            let actions = Array.from(document.querySelectorAll('input[name="action"]:checked')).map(x=>x.value);
+            let other = document.getElementById('otherAction').value.trim();
+            if(actions.includes('other') && other) actions.push(other);
+
+            if(actions.length === 0) {
+                alert('Please select at least one action.');
+                return;
+            }
+            selectedActions = actions;
+
+            // Open data connection and send permission request
+            conn = peer.connect(remotePeerId);
+            conn.on('open', function() {
+                conn.send({ type: 'permission_request', actions });
+                document.getElementById('desktopOptions').classList.add('hidden');
+                document.getElementById('waiting').classList.remove('hidden');
+            });
+            // (response handled in peer.on('connection'))
+        };
+    </script>
+</body>
+</html>
