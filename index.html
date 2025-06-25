@@ -60,7 +60,7 @@
         let selectedActions = [];
 
         function isValidIP(ip) {
-            // IPv4 regex
+            // IPv4 only; if you want IPv6, expand this regex.
             return /^(\d{1,3}\.){3}\d{1,3}$/.test(ip);
         }
 
@@ -75,20 +75,19 @@
 
             // If IP address, use as PeerJS host, else use public PeerJS server
             if (isValidIP(remotePeerId)) {
-                // Connect to a PeerJS server at the given IP (default port 9000)
+                // Use HTTPS to avoid mixed content error if the page is served over HTTPS!
                 peer = new Peer(undefined, {
                     host: remotePeerId,
                     port: 9000,
                     path: '/',
-                    secure: false
+                    secure: true // HTTPS!
                 });
             } else {
-                // Use PeerJS public server
                 peer = new Peer();
             }
 
             peer.on('open', function(id) {
-                // Our own PeerJS ID (for debug: can show to user if needed)
+                // Optionally show your own PeerJS ID
             });
 
             // Listen for permission response
@@ -113,6 +112,11 @@
                     }
                 });
             });
+
+            peer.on('error', function(err) {
+                alert('PeerJS error: ' + err);
+                window.location.reload();
+            });
         };
 
         document.getElementById('requestPerms').onclick = function() {
@@ -133,7 +137,10 @@
                 document.getElementById('desktopOptions').classList.add('hidden');
                 document.getElementById('waiting').classList.remove('hidden');
             });
-            // (response handled in peer.on('connection'))
+            conn.on('error', function(err) {
+                alert('Connection error: ' + err);
+                window.location.reload();
+            });
         };
     </script>
 </body>
