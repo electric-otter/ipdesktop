@@ -5,8 +5,8 @@
     <title>Remote Desktop Peer Access</title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/network-request-proxy@1.1.0/index.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/ip.js@1.3.11/dist/ip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/turbo@2.5.4/bin/turbo.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 40px; background:#f9f9f9; }
         .container { max-width: 500px; margin: auto; background:white; border-radius:10px; box-shadow:0 2px 8px #ccc; padding:30px;}
@@ -31,7 +31,7 @@
             <b>It is your responsibility to ensure you comply with your local laws and regulations.</b> Unauthorized access to computers is illegal everywhere.<br>
             <b>This is why ipdesktop always asks for permission first before connecting or streaming the desktop.</b>
         </div>
-        <form id="ipForm">
+        <form id="ipForm" data-turbo="false">
             <label for="ipInput">Enter Remote Peer ID or Public IP:</label>
             <input type="text" id="ipInput" required placeholder="PeerJS public ID or public IP" style="width:100%;padding:8px;margin-top:4px;">
             <button type="submit" style="margin-top:10px;width:100%;">Connect</button>
@@ -56,32 +56,24 @@
             <video id="desktop-video" autoplay playsinline controls></video>
         </div>
     </div>
-    <script>
-        let peer, conn, call;
-        let remotePeerId = '';
-        let selectedActions = [];
-        const CORSY = "https://corsy.netlify.app/.netlify/functions/cors-proxy?url=";
+    <script type="module">
+        // Use turbo to ensure the DOM is ready and turbo navigation doesn't interfere
+        import {ready} from "https://cdn.jsdelivr.net/npm/turbo@2.5.4/bin/turbo.min.js";
 
-        // Use ip.js to check if input is an IP address (IPv4 or IPv6)
-        function isValidIP(ip) {
-            return window.ip && (ip && (ip.isV4Format(ip) || ip.isV6Format(ip)));
-        }
+        ready(function () {
+            let peer, conn, call;
+            let remotePeerId = '';
+            let selectedActions = [];
+            const CORSY = "https://corsy.netlify.app/.netlify/functions/cors-proxy?url=";
 
-        function getPeer(remotePeerId) {
-            if (isValidIP(remotePeerId)) {
-                // Demo: Fetch PeerJS REST API /peerjs/id via the CORSy proxy using network-request-proxy for demonstration
-                const url = "https://" + remotePeerId + ":9000/peerjs/id";
-                if (window.NetworkRequestProxy) {
-                    NetworkRequestProxy.fetch(CORSY + encodeURIComponent(url))
-                        .then(response => response.text())
-                        .then(id => {
-                            alert("PeerJS server /peerjs/id via CORSy responded:\n" + id +
-                                "\n\nNote: PeerJS WebRTC connections/signaling will NOT work via proxy. Use public PeerJS server for WebRTC.");
-                        })
-                        .catch(e => {
-                            alert("Could not reach PeerJS server REST API via CORSy: " + e);
-                        });
-                } else {
+            function isValidIP(ip) {
+                return window.ip && (ip && (ip.isV4Format(ip) || ip.isV6Format(ip)));
+            }
+
+            function getPeer(remotePeerId) {
+                if (isValidIP(remotePeerId)) {
+                    // Demo: Fetch PeerJS REST API /peerjs/id via the CORSy proxy
+                    const url = "https://" + remotePeerId + ":9000/peerjs/id";
                     fetch(CORSY + encodeURIComponent(url))
                         .then(r => r.text())
                         .then(id => {
@@ -91,82 +83,86 @@
                         .catch(e => {
                             alert("Could not reach PeerJS server REST API via CORSy: " + e);
                         });
+                    // Always use the public PeerJS server for Peer/WebRTC
+                    return new Peer();
+                } else {
+                    // Use the public PeerJS server for normal Peer IDs
+                    return new Peer();
                 }
-                // Always use the public PeerJS server for Peer/WebRTC
-                return new Peer();
-            } else {
-                // Use the public PeerJS server for normal Peer IDs
-                return new Peer();
             }
-        }
 
-        document.getElementById('ipForm').onsubmit = function(e) {
-            e.preventDefault();
-            remotePeerId = document.getElementById('ipInput').value.trim();
-            if(!remotePeerId) return;
+            document.getElementById('ipForm').onsubmit = function(e) {
+                e.preventDefault();
+                remotePeerId = document.getElementById('ipInput').value.trim();
+                if(!remotePeerId) return;
 
-            document.getElementById('ipForm').classList.add('hidden');
-            document.getElementById('desktopOptions').classList.remove('hidden');
+                document.getElementById('ipForm').classList.add('hidden');
+                document.getElementById('desktopOptions').classList.remove('hidden');
 
-            peer = getPeer(remotePeerId);
+                peer = getPeer(remotePeerId);
 
-            peer.on('open', function(id) {
-                // Optionally show your own PeerJS ID
-            });
-
-            peer.on('connection', function(incomingConn) {
-                incomingConn.on('data', function(data) {
-                    if (data.type === 'permission_response') {
-                        if(data.granted) {
-                            document.getElementById('waiting').classList.add('hidden');
-                            document.getElementById('videoSection').classList.remove('hidden');
-                            call = peer.call(remotePeerId, null); // no local stream
-                            call.on('stream', function(remoteStream) {
-                                document.getElementById('desktop-video').srcObject = remoteStream;
-                            });
-                            call.on('close', function() {
-                                alert('Stream closed.');
-                            });
-                        } else {
-                            alert('Permission denied by remote peer.');
-                            window.location.reload();
-                        }
-                    }
+                peer.on('open', function(id) {
+                    // Optionally show your own PeerJS ID
                 });
-            });
 
-            peer.on('error', function(err) {
-                alert('PeerJS error: ' + err);
-                window.location.reload();
-            });
-        };
+                peer.on('connection', function(incomingConn) {
+                    incomingConn.on('data', function(data) {
+                        if (data.type === 'permission_response') {
+                            if(data.granted) {
+                                document.getElementById('waiting').classList.add('hidden');
+                                document.getElementById('videoSection').classList.remove('hidden');
+                                call = peer.call(remotePeerId, null); // no local stream
+                                call.on('stream', function(remoteStream) {
+                                    document.getElementById('desktop-video').srcObject = remoteStream;
+                                });
+                                call.on('close', function() {
+                                    alert('Stream closed.');
+                                });
+                            } else {
+                                alert('Permission denied by remote peer.');
+                                window.location.reload();
+                            }
+                        }
+                    });
+                });
 
-        document.getElementById('requestPerms').onclick = function() {
-            let actions = Array.from(document.querySelectorAll('input[name="action"]:checked')).map(x=>x.value);
-            let other = document.getElementById('otherAction').value.trim();
-            if(actions.includes('other') && other) actions.push(other);
+                peer.on('error', function(err) {
+                    alert('PeerJS error: ' + err);
+                    window.location.reload();
+                });
+            };
 
-            if(actions.length === 0) {
-                alert('Please select at least one action.');
-                return;
-            }
-            selectedActions = actions;
+            document.getElementById('requestPerms').onclick = function() {
+                let actions = Array.from(document.querySelectorAll('input[name="action"]:checked')).map(x=>x.value);
+                let other = document.getElementById('otherAction').value.trim();
+                if(actions.includes('other') && other) actions.push(other);
 
-            conn = peer.connect(remotePeerId);
-            if (!conn) {
-                alert('Connection could not be established.');
-                window.location.reload();
-                return;
-            }
-            conn.on('open', function() {
-                conn.send({ type: 'permission_request', actions });
-                document.getElementById('desktopOptions').classList.add('hidden');
-                document.getElementById('waiting').classList.remove('hidden');
-            });
-            conn.on('error', function(err) {
-                alert('Connection error: ' + err);
-                window.location.reload();
-            });
+                if(actions.length === 0) {
+                    alert('Please select at least one action.');
+                    return;
+                }
+                selectedActions = actions;
+
+                conn = peer.connect(remotePeerId);
+                if (!conn) {
+                    alert('Connection could not be established.');
+                    window.location.reload();
+                    return;
+                }
+                conn.on('open', function() {
+                    conn.send({ type: 'permission_request', actions });
+                    document.getElementById('desktopOptions').classList.add('hidden');
+                    document.getElementById('waiting').classList.remove('hidden');
+                });
+                conn.on('error', function(err) {
+                    alert('Connection error: ' + err);
+                    window.location.reload();
+                });
+            };
+        });
+    </script>
+</body>
+</html>
         };
     </script>
 </body>
